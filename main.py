@@ -57,13 +57,13 @@ def images(path):
         result = get_result(conn.execute('''SELECT images.*, users.image,
                                     SUM(likes.value) as likes,
                                     SUM(NOT likes.value) as unlikes,
-                                    CASE
-                                      WHEN images.user_login = ? THEN CASE 
-                                        WHEN likes.value is true THEN 1
-                                        WHEN likes.value is false THEN -1
+                                    CASE 
+                                      WHEN EXISTS (SELECT 1 FROM likes WHERE user_login = ? AND image_id = images.image_id) THEN
+                                        CASE 
+                                          WHEN (SELECT value FROM likes WHERE user_login = ? AND image_id = images.image_id) THEN 1
+                                          ELSE -1
+                                        END
                                         ELSE 0
-                                      END
-                                      ELSE 0
                                     END AS liked,
                                     CASE
                                       WHEN (julianday(CURRENT_TIMESTAMP) - julianday(images.init_date)) < 1 THEN 1
@@ -73,7 +73,6 @@ def images(path):
                                       WHEN (julianday(CURRENT_TIMESTAMP) - julianday(images.init_date)) < 365 THEN 5
                                       ELSE 6
                                     END AS order_by_date,
-
                                     CASE
                                       WHEN SUM(likes.value) - SUM(NOT likes.value) IS NULL THEN 0
                                       ELSE SUM(likes.value) - SUM(NOT likes.value)
@@ -83,7 +82,7 @@ def images(path):
                                     LEFT JOIN users ON images.user_login = users.login
                                     GROUP BY images.image_id
                                     ORDER BY order_by_date ,like_unlike_diff DESC, init_date DESC;
-                                    ''', [path]))
+                                    ''', [path, path]))
         if len(result) > 0:
             return result
         return jsonify({'value': 'not found in database'})
@@ -123,11 +122,11 @@ def comments(path):
         result = get_result(conn.execute('''SELECT comments.*, users.image,
                                     SUM(likeComment.value) as likes,
                                     SUM(NOT likeComment.value) as unlikes,
-                                    CASE
-                                        WHEN comments.user_login = ? THEN CASE 
-                                            WHEN likeComment.value is true THEN 1
-                                            WHEN likeComment.value is false THEN -1
-                                            ELSE 0
+                                    CASE 
+                                      WHEN EXISTS (SELECT 1 FROM likeComment WHERE user_login = ? AND comment_id = comments.comment_id) THEN
+                                        CASE 
+                                          WHEN (SELECT value FROM likeComment WHERE user_login = ? AND comment_id = comments.comment_id) THEN 1
+                                          ELSE -1
                                         END
                                         ELSE 0
                                     END AS liked,
@@ -141,7 +140,7 @@ def comments(path):
                                     WHERE comments.image_id = ?
                                     GROUP BY comments.comment_id
                                     ORDER BY like_unlike_diff DESC, init_date DESC;
-                                    ''', [path.split('/')[0], path.split('/')[1]]))
+                                    ''', [path.split('/')[0], path.split('/')[0], path.split('/')[1]]))
         return result
     elif request.method == 'POST':
         req = request.json
@@ -168,7 +167,7 @@ def comments(path):
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-@app.route('/likes', methods=['POST', 'DELETE'])
+@app.route('/likes/', methods=['POST', 'DELETE'])
 def likes():
     req = request.json
     if request.method == 'POST':
@@ -194,7 +193,7 @@ def likes():
     return jsonify({'value': 'worked'})
 
 
-@app.route('/likeComment', methods=['POST', 'DELETE'])
+@app.route('/likeComment/', methods=['POST', 'DELETE'])
 def like_comment():
     req = request.json
     if request.method == 'POST':
